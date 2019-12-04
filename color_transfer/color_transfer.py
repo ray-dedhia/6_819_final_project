@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import os
 import sys
+import time
 
 def read_file(sn,tn):
     s = cv2.imread(sn)
@@ -16,15 +17,24 @@ def get_mean_and_std(x):
     x_std = np.hstack(np.around(x_std,2))
     return x_mean, x_std
 
-def print_progress(percent):
+def print_progress(start_time, percent):
     """
+    start_time (float): value returned by time.clock() at beginning of algorithm
     percent (float): decimal percentage
     """
+    time_passed = time.clock() - start_time
+    if percent==0:
+        est_total_time = 0
+        time_passed = int(time_passed)
+    else:
+        est_total_time = int(time_passed / percent)
+        time_passed = int(time_passed)
+
     total_bar_size = 50
     bar_size = int(percent * total_bar_size)
     bar_string = "="*bar_size + (total_bar_size-bar_size)*" "
     sys.stdout.write("\r") # flush progress bar
-    sys.stdout.write("[{}] {}%".format(bar_string, int(percent*100)))
+    sys.stdout.write("[{}] {}%, [{}s / {}s]".format(bar_string, int(percent*100), time_passed, est_total_time))
     sys.stdout.flush()
 
 def color_transfer(source, target, result_name):
@@ -39,6 +49,7 @@ def color_transfer(source, target, result_name):
     Generates source image with target image coloring and saves as
     result_name.
     """
+    start_time = time.clock()
 
     s, t = read_file(source,target)
     s_mean, s_std = get_mean_and_std(s)
@@ -59,7 +70,7 @@ def color_transfer(source, target, result_name):
                 x = 255 if x>255 else x
                 s[i,j,k] = x
                 step = i*width*channel + j*channel + k
-                print_progress(step/total_steps)
+                print_progress(start_time, step/total_steps)
 
     sys.stdout.write("\n") # ends progress bar
 
