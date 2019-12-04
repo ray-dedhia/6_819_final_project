@@ -20,10 +20,12 @@ def print_progress(percent):
     """
     percent (float): decimal percentage
     """
-    bar_size = int(percent * 50)
+    total_bar_size = 50
+    bar_size = int(percent * total_bar_size)
+    bar_string = "="*bar_size + (total_bar_size-bar_size)*" "
     sys.stdout.write("\r") # flush progress bar
-    sys.stdout.write("[{}] {}%".format("="*bar_size, int(percent*100)))
-    sys.stdout.flush();
+    sys.stdout.write("[{}] {}%".format(bar_string, int(percent*100)))
+    sys.stdout.flush()
 
 #Inputs are the source image name, the style image name, and what you want to name the resulting image
 #(all including type, .jpg, .png, etc)
