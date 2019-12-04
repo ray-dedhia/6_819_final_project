@@ -27,9 +27,18 @@ def print_progress(percent):
     sys.stdout.write("[{}] {}%".format(bar_string, int(percent*100)))
     sys.stdout.flush()
 
-#Inputs are the source image name, the style image name, and what you want to name the resulting image
-#(all including type, .jpg, .png, etc)
 def color_transfer(source, target, result_name):
+    """
+    Inputs: 
+        source (string): image name
+        target (string): the style image name
+        result_name (string): what you want to name the resulting image
+    
+    Note: All including type, .jpg, .png, etc
+
+    Generates source image with target image coloring and saves as
+    result_name.
+    """
 
     s, t = read_file(source,target)
     s_mean, s_std = get_mean_and_std(s)
