@@ -224,6 +224,9 @@ def get_best_patch(output_image, block, all_patches, texture, texture_luminosity
         overlap (int): the size of the overlap between the patches when calculating error
     """
 
+    # alpha - how much to weigh luminosity
+    alpha = 2
+
     # get sum of squared errors
     errors = []
     for patch in all_patches:
@@ -232,7 +235,7 @@ def get_best_patch(output_image, block, all_patches, texture, texture_luminosity
         # get error between luminosity of target image and texture patch
         luminosity_error = get_luminosity_error(target_luminosity, block, 
             texture_luminosity, patch, overlap)
-        errors.append(overlap_error + luminosity_error)
+        errors.append(overlap_error + alpha*luminosity_error)
 
     # get min non-zero error
     errors = np.array(errors)
@@ -340,4 +343,4 @@ def run(texture_filename, target_filename, output_filename):
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/rings.png", "targets/bridge.png", "output/block_rings_3.png")
+run("styles/rings.png", "targets/bridge.png", "transfer_output/block_size_10_overlap_5_target_bridge.png")
