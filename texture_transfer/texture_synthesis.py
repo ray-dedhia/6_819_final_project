@@ -295,16 +295,10 @@ def gen_blocks(output_image, b):
     Divide the output image into square blocks of size (b x b).
     Output a list containing the block=[j_first, j_last, i_first, i_last]
     of each block, such that 
-    array[j_first:j_last, i_first:i_last, :] is the block
-
-    Return blocks and block_index_to_overlap_type.
-
-    block_index_to_overlap_type[block_index] indicates which type of overlap
-    error to check for: 0=top edge, 1=left edge, 2=top and left edges
+    output_image[j_first:j_last, i_first:i_last, :] is the block
     """
 
     blocks = []
-    block_index_to_overlap_type = {}
 
     height, width, channels = output_image.shape
     
@@ -318,19 +312,9 @@ def gen_blocks(output_image, b):
             i_first = i
             i_last = i + delta_x
 
-            if i==0:
-                # get top edge overlap error
-                block_index_to_overlap_type[len(blocks)] = 0
-            elif j==0:
-                # get left edge overlap error
-                block_index_to_overlap_type[len(blocks)] = 1
-            else:
-                # get top and left overlap errors
-                block_index_to_overlap_type[len(blocks)] = 2
-
             blocks.append(np.array([j_first, j_last, i_first, i_last]))
             
-    return (np.array(blocks), block_index_to_overlap_type)
+    return np.array(blocks)
 
 def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
     """
@@ -369,6 +353,19 @@ def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
     output_image[j_first:j_last, i_first:i_last, :] = texture_patch[overlap:-ignore_y, overlap:-ignore_x, :]
         
     return output_image
+
+def get_overlap_error():
+
+            if i_first==0:
+                # get top edge overlap error
+                block_index_to_overlap_type[len(blocks)] = 0
+            elif j_first==0:
+                # get left edge overlap error
+                block_index_to_overlap_type[len(blocks)] = 1
+            else:
+                # get top and left overlap errors
+                block_index_to_overlap_type[len(blocks)] = 2
+
 
 def get_best_patch(output_image, block, overlap_type, all_patches, texture, overlap):
     """
@@ -447,7 +444,7 @@ def synthesize_texture_in_patches(texture, b, overlap, size):
     output_image = np.full((image_height, image_width, num_channels),np.nan)
 
     ## Generate blocks
-    blocks, block_index_to_overlap_type = gen_blocks(output_image, b)
+    blocks = gen_blocks(output_image, b)
 
     ## Generate all patch windows
     patch_size = b + 2*overlap
