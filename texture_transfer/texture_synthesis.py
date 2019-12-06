@@ -287,6 +287,7 @@ def gen_patches(output_image, texture, patch_size):
     for j in range(0, height-patch_size):
         for i in range(0, width-patch_size):
             patches.append(texture[j:j+patch_size, i:i+patch_size, :])
+            print("patch shape", np.array(patches[-1]).shape)
 
     return patches
 
@@ -324,7 +325,7 @@ def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
             output_image[j_first:j_last, i_first:i_last, :] is the block in
             the output image to be filled in
         texture_patch (3D array): the values being added to the output image; 
-            shape=(b + 2*overlap, b + 2*overlap, channels)
+            shape=(patch_size, patch_size, channels)
         b (int): blocks are shape (b, b, channels)
         overlap (int): the size of the overlap between the patches when calculating error
 
@@ -336,12 +337,20 @@ def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
     j_first, j_last, i_first, i_last = block
     H = j_last - j_first
     W = i_last - i_first
-    
-    # ignore_x and ignore_y equal b unless block is smaller than regular blocks (goes over edge of output image)
-    ignore_y = overlap + (b-H if H<b else 0)
-    ignore_x = overlap + (b-W if W<b else 0)
-    j_first, j_last, i_first, i_last = block
-    output_image[j_first:j_last, i_first:i_last, :] = texture_patch[overlap:-ignore_y, overlap:-ignore_x, :]
+    print("H", H)
+    print("W", W)
+    print("b", b)
+
+    # last_x and last_y equal overlap plus height and width of block
+    last_y = overlap + H 
+    last_x = overlap + W
+    print("overlap", overlap)
+    print("last y", last_y)
+    print("last x", last_x)
+    print("output image block shape", np.array(output_image[j_first:j_last, i_first:i_last, :]).shape)
+    print("texture patch shape", np.array(texture_patch).shape)
+    print("texture patch cropped shape", np.array(texture_patch[overlap:last_y, overlap:last_x, :]).shape)
+    output_image[j_first:j_last, i_first:i_last, :] = texture_patch[overlap:last_y, overlap:last_x, :]
         
     return output_image
 
@@ -465,21 +474,26 @@ def synthesize_texture_in_patches(texture, b, overlap, size):
     blocks = gen_blocks(output_image, b)
 
     ## Generate all patch windows
-    patch_size = b + 2*overlap
+    patch_size = b + overlap # same size as block plus overlap on top and left sides
     all_patches = gen_patches(output_image, texture, patch_size)
 
     ## Initialization: pick a random (patch_size x patch_size) patch from the texture
     ## source image and place it in the top-left (b x b) block in the output image
-    j0 = round(np.random.uniform(0,1) * (texture_width-patch_size))
-    i0 = round(np.random.uniform(0,1) * (texture_height-patch_size))
+    print("texture_width", texture_width)
+    print("texture_height", texture_height)
+    print("patch_size", patch_size)
+    j0 = np.random.randint(texture_height-patch_size)
+    i0 = np.random.randint(texture_width-patch_size)
+    print("i0, j0", i0, j0)
     random_texture_patch = texture[j0:j0+patch_size, i0:i0+patch_size, :]
+    print("random texture patch shape", np.array(random_texture_patch).shape)
     output_image = add_patch_to_output_image(output_image, blocks[0], random_texture_patch, b, overlap)
 
     start_time = time.clock()
 
     ## Fill in the rest of the blocks
     for i in range(1, len(blocks)):
-        print_progress(start_time, i / len(blocks))
+        print_progress(start_time, (i-1) / (len(blocks)-1))
         best_texture_patch = get_best_patch(output_image, blocks[i], all_patches, texture, overlap)
         output_image = add_patch_to_output_image(output_image, blocks[i], best_texture_patch, b, overlap)
 
@@ -496,20 +510,21 @@ def run(texture_name, output_filename, pixel_by_pixel):
     Saves synthesized texture to <output_filename>.png
     """
 
-    names_to_textures = {"texture": cv2.imread('texture.jpg'), "rings": cv2.imread('rings.jpg')}
+    filename = "styles/" + texture_name + ".png"
+    image = cv2.imread(filename)
     output_image_size = [100, 100]
 
     if pixel_by_pixel:
         window_size = 5
-        target = synthesize_texture_pixel_by_pixel(names_to_textures[texture_name], window_size, output_image_size)
+        target = synthesize_texture_pixel_by_pixel(image, window_size, output_image_size)
     else:
-        block_size = 10
+        block_size = 80
         overlap = 5
-        target = synthesize_texture_in_patches(names_to_textures[texture_name], block_size, overlap, output_image_size)
+        target = synthesize_texture_in_patches(image, block_size, overlap, output_image_size)
 
     plt.figure() 
     plt.imshow(target) 
     plt.axis('off') 
     plt.savefig("output/" + output_filename + ".png")
 
-run("texture", "block_synth_texture", False)
+run("brickwall", "block_brickwall", False)
