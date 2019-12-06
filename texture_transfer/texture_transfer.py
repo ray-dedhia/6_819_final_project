@@ -339,4 +339,4 @@ def run(texture_filename, target_filename, output_filename):
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/rings.png", "targets/bridge.png", "transfer_output/block_size_10_overlap_5_target_bridge.png")
+run("styles/texture.png", "targets/bridge.png", "transfer_output/block_size_10_overlap_5_style_texture_target_bridge.png")
