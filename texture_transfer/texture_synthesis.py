@@ -76,7 +76,7 @@ def find_matches(template, texture, gaussian):
     Calculate the SSD (sum of squared differences) between the non-NAN (filled in) values
     in the template and the corresponding values in every w x w window in the texture, weighted
     by the gaussian of the (w x w) impulse matrix. Return the pixel values at the centers of 
-    the w x w windows in the texture with some error (SSD) below some threshold epsilon, and
+    the w x w windows in the texture with some error (SSD) below some threshhold epsilon, and
     their corresponding errors.
     
     @param:
@@ -92,7 +92,7 @@ def find_matches(template, texture, gaussian):
         - valid_centers (2D array): (R, G, B) pixel values at centers of (w x w) windows in texture
         - errors (1D array): SSD[k] for all SSD[k] such that SSD[k] < min(SSD) * (1 + epsilon)
     """
-    # error threshold
+    # error threshhold
     epsilon = 0.1 
     
     # get w from gaussian
@@ -199,7 +199,7 @@ def synthesize_texture_pixel_by_pixel(texture, w, size):
     # 10% of the pixels are filled
     next_p = n_pixels / 10
     
-    # maximum error threshold
+    # maximum error threshhold
     delta = 0.3 
     
     # while there are still unfilled pixels
@@ -246,7 +246,7 @@ def synthesize_texture_pixel_by_pixel(texture, w, size):
             chosen_center_pixel = valid_center_pixels[rand_ind]
             chosen_error = errors[rand_ind]
             
-            # only set pixel value if error is less than max threshold
+            # only set pixel value if error is less than max threshhold
             if (chosen_error < delta):
                 # set the value at (i,j) in image equal to chosen_center_pixel 
                 synth_im[jk][ik] = chosen_center_pixel
@@ -282,12 +282,12 @@ def gen_patches(output_image, texture, patch_size):
 
     patches = []
 
-    height, width, channels = output_image.shape
+    height, width, channels = texture.shape
     
-    for j in range(0, height):
-        for i in range(0, width):
+    for j in range(0, height-patch_size):
+        for i in range(0, width-patch_size):
             patches.append(texture[j:j+patch_size, i:i+patch_size, :])
-            
+
     return patches
 
 def gen_blocks(output_image, b):
@@ -301,11 +301,11 @@ def gen_blocks(output_image, b):
     blocks = []
 
     height, width, channels = output_image.shape
-    
+
     for j in range(0, height, b):
         for i in range(0, width, b):
-            delta_x = min((width-b), b) # width-b if block goes off edge, else b
-            delta_y = min((height-b), b) # height-b if block goes off edge, else b
+            delta_x = min((width-i), b) # width-i if block goes off edge, else b
+            delta_y = min((height-j), b) # height-j if block goes off edge, else b
 
             j_first = j
             j_last = j + delta_y
@@ -333,41 +333,63 @@ def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
         with out of bounds pixels ignored
     """
 
-    print("block", block)
     j_first, j_last, i_first, i_last = block
     H = j_last - j_first
     W = i_last - i_first
-    print("H", H)
-    print("W", W)
-    print("b", b)
     
     # ignore_x and ignore_y equal b unless block is smaller than regular blocks (goes over edge of output image)
     ignore_y = overlap + (b-H if H<b else 0)
     ignore_x = overlap + (b-W if W<b else 0)
-    print("ignore_y", ignore_y)
-    print("ignore_x", ignore_x)
     j_first, j_last, i_first, i_last = block
-    print("output image block shape", output_image[j_first:j_last, i_first:i_last, :].shape)
-    print("texture patch shape", texture_patch.shape)
-    print("texture patch minus overlap shape", texture_patch[overlap:-ignore_y, overlap:-ignore_x, :].shape)
     output_image[j_first:j_last, i_first:i_last, :] = texture_patch[overlap:-ignore_y, overlap:-ignore_x, :]
         
     return output_image
 
-def get_overlap_error():
+def get_overlap_error(output_image, block, patch, overlap):
+    """
+    @param:
+        output_image (3D array): image being synthesized with texture
+        block (1D array): equals [j_first, j_last, i_first, i_last], such that
+            output_image[j_first:j_last, i_first:i_last, :] is the block in
+            the output image to be filled in
+        patch (3D array): one of all possible sliding windows over texture of 
+            size patch_size x patch_size over texture source image. shape is
+            (patch_size, patch_size, channels)
+        overlap (int): the size of the overlap between the patches when calculating error
 
-            if i_first==0:
-                # get top edge overlap error
-                block_index_to_overlap_type[len(blocks)] = 0
-            elif j_first==0:
-                # get left edge overlap error
-                block_index_to_overlap_type[len(blocks)] = 1
-            else:
-                # get top and left overlap errors
-                block_index_to_overlap_type[len(blocks)] = 2
+    @return:
+        error_sum (int): sum of squared errors
+    """
 
+    # get overlap type from block 
+    j_first, j_last, i_first, i_last = block
+    top_edge_overlap = (j_first != 0)
+    left_edge_overlap = (i_first != 0)
 
-def get_best_patch(output_image, block, overlap_type, all_patches, texture, overlap):
+    # calculate error
+    error_sum = 0
+
+    if (top_edge_overlap):
+        x_start = i_first - overlap if left_edge_overlap else i_first
+        x_end = i_last
+        y_start = j_first - overlap 
+        y_end = j_first
+        for i in range(x_start, x_end):
+            for j in range(y_start, y_end):
+                error_sum += np.nansum(np.square(np.subtract(output_image[j][i], patch[j-y_start][i-x_start])))
+    
+    if (left_edge_overlap):
+        x_start = i_first - overlap
+        x_end = i_last
+        y_start = j_first - overlap if top_edge_overlap else j_first
+        y_end = j_last
+        for i in range(x_start, x_end):
+            for j in range(y_start, y_end):
+                error_sum += np.nansum(np.square(np.subtract(output_image[j][i], patch[j-y_start][i-x_start])))
+        
+    return error_sum
+
+def get_best_patch(output_image, block, all_patches, texture, overlap):
     """
     Using all_patches (all possible sliding windows of size patch_size placed over texture), calculate error
     between overlap with output_image_block if patch is placed in output_image by output_image_block
@@ -377,36 +399,32 @@ def get_best_patch(output_image, block, overlap_type, all_patches, texture, over
         block (1D array): equals [j_first, j_last, i_first, i_last], such that
             output_image[j_first:j_last, i_first:i_last, :] is the block in
             the output image to be filled in
-        overlap_type (int): indicates which type of overlap error to check 
-            for: 0=top edge, 1=left edge, 2=top and left edges
         all_patches (4D array): all possible sliding windows over texture of 
             size patch_size x patch_size over texture source image. shape is
             (num_windows, patch_size, patch_size, channels)
-
-            shape=(b + 2*overlap, b + 2*overlap, channels)
-        b (int): blocks are shape (b, b, channels)
+        texture (3D array): the texture; array of shape (height, width, channels)
         overlap (int): the size of the overlap between the patches when calculating error
-
     """
 
-
-    """
-    # get block from output image
-    j_first, j_last, i_first, i_last = block
-    output_image_block = output_image[j_first:j_last, i_first:i_last, :]
-
+    # get sum of squared errors
+    errors = []
     for patch in all_patches:
-        error = get_overlap_error(output_image_block, overlap_type, texture, patch, overlap)
-    """
+        error = get_overlap_error(output_image, block, patch, overlap)
+        errors.append(error)
 
-    patch_size = all_patches[0].shape[0]
-    [texture_height, texture_width, num_channels] = texture.shape
+    # get min non-zero error
+    errors = np.array(errors)
+    min_error = np.min(errors[errors>0])
 
-    j0 = round(np.random.uniform(0,1) * (texture_width-patch_size))
-    i0 = round(np.random.uniform(0,1) * (texture_height-patch_size))
-    random_texture_patch = texture[j0:j0+patch_size, i0:i0+patch_size, :]
-
-    return random_texture_patch
+    # make list of patches with error below some threshhold
+    epsilon = 0.1 # error threshhold
+    valid_texture_patches = []
+    for k in range(len(errors)):
+        if ((errors[k] > 0 and errors[k] < min_error * (1 + epsilon))):
+            valid_texture_patches.append(all_patches[k])
+    
+    # return random patch from valid patches
+    return valid_texture_patches[np.random.randint(len(valid_texture_patches))]
 
 def synthesize_texture_in_patches(texture, b, overlap, size):
     """
@@ -457,9 +475,12 @@ def synthesize_texture_in_patches(texture, b, overlap, size):
     random_texture_patch = texture[j0:j0+patch_size, i0:i0+patch_size, :]
     output_image = add_patch_to_output_image(output_image, blocks[0], random_texture_patch, b, overlap)
 
+    start_time = time.clock()
+
     ## Fill in the rest of the blocks
     for i in range(1, len(blocks)):
-        best_texture_patch = get_best_patch(output_image, blocks[i], block_index_to_overlap_type[i], all_patches, texture, overlap)
+        print_progress(start_time, i / len(blocks))
+        best_texture_patch = get_best_patch(output_image, blocks[i], all_patches, texture, overlap)
         output_image = add_patch_to_output_image(output_image, blocks[i], best_texture_patch, b, overlap)
 
     return output_image
@@ -483,7 +504,7 @@ def run(texture_name, output_filename, pixel_by_pixel):
         target = synthesize_texture_pixel_by_pixel(names_to_textures[texture_name], window_size, output_image_size)
     else:
         block_size = 10
-        overlap = 2
+        overlap = 5
         target = synthesize_texture_in_patches(names_to_textures[texture_name], block_size, overlap, output_image_size)
 
     plt.figure() 
