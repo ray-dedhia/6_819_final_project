@@ -287,7 +287,7 @@ def gen_patches(output_image, texture, patch_size):
     for j in range(0, height-patch_size):
         for i in range(0, width-patch_size):
             patches.append(texture[j:j+patch_size, i:i+patch_size, :])
-            print("patch shape", np.array(patches[-1]).shape)
+            #print("patch shape", np.array(patches[-1]).shape)
 
     return patches
 
@@ -337,19 +337,19 @@ def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
     j_first, j_last, i_first, i_last = block
     H = j_last - j_first
     W = i_last - i_first
-    print("H", H)
-    print("W", W)
-    print("b", b)
+    #print("H", H)
+    #print("W", W)
+    #print("b", b)
 
     # last_x and last_y equal overlap plus height and width of block
     last_y = overlap + H 
     last_x = overlap + W
-    print("overlap", overlap)
-    print("last y", last_y)
-    print("last x", last_x)
-    print("output image block shape", np.array(output_image[j_first:j_last, i_first:i_last, :]).shape)
-    print("texture patch shape", np.array(texture_patch).shape)
-    print("texture patch cropped shape", np.array(texture_patch[overlap:last_y, overlap:last_x, :]).shape)
+    #print("overlap", overlap)
+    #print("last y", last_y)
+    #print("last x", last_x)
+    #print("output image block shape", np.array(output_image[j_first:j_last, i_first:i_last, :]).shape)
+    #print("texture patch shape", np.array(texture_patch).shape)
+    #print("texture patch cropped shape", np.array(texture_patch[overlap:last_y, overlap:last_x, :]).shape)
     output_image[j_first:j_last, i_first:i_last, :] = texture_patch[overlap:last_y, overlap:last_x, :]
         
     return output_image
@@ -479,14 +479,14 @@ def synthesize_texture_in_patches(texture, b, overlap, size):
 
     ## Initialization: pick a random (patch_size x patch_size) patch from the texture
     ## source image and place it in the top-left (b x b) block in the output image
-    print("texture_width", texture_width)
-    print("texture_height", texture_height)
-    print("patch_size", patch_size)
+    #print("texture_width", texture_width)
+    #print("texture_height", texture_height)
+    #print("patch_size", patch_size)
     j0 = np.random.randint(texture_height-patch_size)
     i0 = np.random.randint(texture_width-patch_size)
-    print("i0, j0", i0, j0)
+    #print("i0, j0", i0, j0)
     random_texture_patch = texture[j0:j0+patch_size, i0:i0+patch_size, :]
-    print("random texture patch shape", np.array(random_texture_patch).shape)
+    #print("random texture patch shape", np.array(random_texture_patch).shape)
     output_image = add_patch_to_output_image(output_image, blocks[0], random_texture_patch, b, overlap)
 
     start_time = time.clock()
