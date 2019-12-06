@@ -190,12 +190,17 @@ def get_luminosity_error(target_luminosity, block, texture_luminosity, patch, ov
             such that texture[j_first:j_last, i_first:i_last, :] is the texture patch 
     """
 
+    # get target block
     j_first_b, j_last_b, i_first_b, i_last_b = block
+    H = j_last_b - j_first_b
+    W = i_last_b - i_first_b
     target_lum_block = target_luminosity[j_first_b:j_last_b, i_first_b:i_last_b]
 
+    # get texture block
     j_first_p, j_last_p, i_first_p, i_last_p = patch
-    texture_lum_block = texture_luminosity[j_first_p:j_last_p-overlap, i_first_p:i_last_p-overlap]
+    texture_lum_block = texture_luminosity[j_first_p:j_first_p+H, i_first_p:i_first_p+W]
 
+    # get sum of mean squared error
     return np.nansum(np.square(np.subtract(target_lum_block, texture_lum_block)))
 
 def get_best_patch(output_image, block, all_patches, texture, texture_luminosity,
