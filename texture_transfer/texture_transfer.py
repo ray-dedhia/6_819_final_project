@@ -161,7 +161,7 @@ def get_overlap_error(output_image, block, texture, patch, overlap):
         x_end = i_last_b
         y_start = j_first_b - overlap 
         y_end = j_first_b
-        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, y_start:y_end, :],
+        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, x_start:x_end, :],
             texture_patch[:(y_end-y_start), :(x_end-x_start), :])))
     
     if (left_edge_overlap):
@@ -169,7 +169,7 @@ def get_overlap_error(output_image, block, texture, patch, overlap):
         x_end = i_last_b
         y_start = j_first_b - overlap if top_edge_overlap else j_first_b
         y_end = j_last_b
-        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, y_start:y_end, :],
+        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, x_start:x_end, :],
             texture_patch[:(y_end-y_start), :(x_end-x_start), :])))
         
     return error_sum
