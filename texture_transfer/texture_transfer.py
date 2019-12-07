@@ -221,7 +221,7 @@ def get_best_patch(output_image, block, all_patches, texture, texture_luminosity
     """
 
     # alpha - how much to weigh luminosity
-    alpha = 2
+    alpha = 5
 
     # get sum of squared errors
     errors = []
@@ -330,8 +330,8 @@ def run(texture_filename, target_filename, output_filename):
     texture_image = cv2.imread(texture_filename)
     target_image = cv2.imread(target_filename)
 
-    block_size = 20
-    overlap = 5
+    block_size = 5
+    overlap = 1
     target = synthesize_texture_in_patches(texture_image, target_image, block_size, overlap)
 
     plt.figure() 
@@ -339,4 +339,4 @@ def run(texture_filename, target_filename, output_filename):
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/texture.png", "targets/bridge.png", "transfer_output/block_size_10_overlap_5_style_texture_target_bridge.png")
+run("styles/starry_night.png", "targets/bridge.png", "transfer_output/block_size_5_overlap_1_style_starry_night_target_bridge.png")
