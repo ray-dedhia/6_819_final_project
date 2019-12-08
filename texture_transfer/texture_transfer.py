@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+from PIL import Image
 import numpy as np
 from scipy import ndimage
 import math
@@ -11,7 +12,7 @@ import matplotlib.pyplot as plt
 import time
 
 def rgb2gray(rgb):
-    return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
+    return np.array(np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140]), dtype="int32")
 
 def print_progress(start_time, percent):
     """
@@ -34,10 +35,11 @@ def print_progress(start_time, percent):
         int(percent*100), time_passed, est_total_time))
     sys.stdout.flush()
 
-def im2double(im):
-    info = np.iinfo(im.dtype) # Get the data type of the input image
-    # Divide all values by the largest possible value in the datatype
-    return im.astype(np.float) / info.max 
+def im2array(filename):
+    img = Image.open(filename) 
+    img.load()
+    data = np.asarray(img, dtype="int32")
+    return data
 
 def im2col_sliding_strided(image, window_size, stepsize=1):
     """
@@ -59,7 +61,7 @@ def im2col_sliding_strided(image, window_size, stepsize=1):
     strd = s0,s1,s0,s1
 
     out_view = np.lib.stride_tricks.as_strided(image, shape=shp, strides=strd)
-    return (out_view.reshape(window_size[0]*window_size[1],-1)[:,::stepsize]).T
+    return np.array((out_view.reshape(window_size[0]*window_size[1],-1)[:,::stepsize]).T, dtype="int32")
 
 def gen_blocks_inds(output_image, b, overlap):
     """
@@ -149,11 +151,11 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
 
     # get patch from output image
     output_image_patch = np.array(output_image[j_first-overlap:j_last, 
-            i_first-overlap:i_last, :])
+            i_first-overlap:i_last, :], dtype="int32")
 
     # get patch from target luminosity map
     target_lum_patch = np.array(target_luminosity[j_first-overlap:j_last, 
-            i_first-overlap:i_last])
+            i_first-overlap:i_last], dtype="int32")
 
     # resize patches if too small
     if (output_image_patch.shape != (patch_size, patch_size, num_channels)):
@@ -173,12 +175,12 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
     # overlap error between output image and all texture patches over block
     # calculate sum of squared errors and sum over color channels
     # each index corresponds to the error of a texture patch
-    stacked_overlap_errors = np.nansum(np.nansum(np.square(np.subtract( \
-        stacked_flat_output_image_patch, all_patches)), axis=1), axis=1)
+    stacked_overlap_errors = np.array(np.nansum(np.nansum(np.square(np.subtract( \
+        stacked_flat_output_image_patch, all_patches)), axis=1), axis=1), dtype="int32")
 
     # luminosity error between target patch being filled and all texture patches
-    stacked_lum_errors = np.nansum(np.square(np.subtract( \
-        stacked_flat_target_lum_patch, texture_luminosity_windows)), axis=1)
+    stacked_lum_errors = np.array(np.nansum(np.square(np.subtract( \
+        stacked_flat_target_lum_patch, texture_luminosity_windows)), axis=1), dtype="int32")
 
     # sum errors
     stacked_errors = stacked_overlap_errors + stacked_lum_errors
@@ -225,12 +227,7 @@ def transfer_texture_in_patches(texture, target, b, overlap):
     @return:
         synthesized image as numpy array
     """
-    ## Normalize the pixel intensity of the texture image
-    texture = im2double(texture)
     [texture_height, texture_width, texture_num_channels] = texture.shape
-
-    ## Normalize the pixel intensity of the target image
-    target = im2double(target)
     [target_height, target_width, target_num_channels] = target.shape
 
     ## Get sliding window over luminosity maps of texture and target images
@@ -286,10 +283,10 @@ def run(texture_filename, target_filename, output_filename):
     Saves synthesized texture to <output_filename>.png
     """
 
-    texture_image = cv2.imread(texture_filename)
-    target_image = cv2.imread(target_filename)
+    texture_image = im2array(texture_filename)
+    target_image = im2array(target_filename)
 
-    block_size = 10
+    block_size = 20
     overlap = 5
     target = transfer_texture_in_patches(texture_image, target_image, block_size, overlap)
 
@@ -298,4 +295,4 @@ def run(texture_filename, target_filename, output_filename):
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/rings.png", "targets/bridge.png", "transfer_output/test.png")
+run("styles/starry_night.png", "targets/bridge.png", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5.png")
