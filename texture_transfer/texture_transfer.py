@@ -39,50 +39,42 @@ def im2double(im):
     # Divide all values by the largest possible value in the datatype
     return im.astype(np.float) / info.max 
 
-def gen_patches(output_image, texture, patch_size):
+def im2col_sliding_strided(image, window_size, stepsize=1):
     """
-    Gen and return all possible sliding windows over texture of size patch_size x patch_size
-    over texture source image. Return list of all patches.
-
+    Generates a sliding window. 
+    
     @param:
-        output_image (3D array): image being synthesized with texture
-        texture (3D array): the texture
-        patch_size (int): the size of the patches is (patch_size, patch_size, channels)
-    
+        window_size (1d array): the size of the sliding window (width, height)
+        image (2d array): the image the sliding window goes over
+        
     @return:
-        Output a list containing the patch=[j_first, j_last, i_first, i_last] of each
-        patch, such that texture[j_first:j_last, i_first:i_last, :] is the patch 
+        out_view: a 2D array where each row of out_view is the sliding window flattened
     """
+    # Parameters
+    m,n = image.shape
+    s0, s1 = image.strides
+    nrows = m-window_size[0]+1
+    ncols = n-window_size[1]+1
+    shp = window_size[0],window_size[1],nrows,ncols
+    strd = s0,s1,s0,s1
 
-    patches = []
+    out_view = np.lib.stride_tricks.as_strided(image, shape=shp, strides=strd)
+    return (out_view.reshape(window_size[0]*window_size[1],-1)[:,::stepsize]).T
 
-    height, width, channels = texture.shape
-    
-    for j in range(0, height-patch_size):
-        for i in range(0, width-patch_size):
-            j_first = j
-            j_last = j + patch_size
-            i_first = i
-            i_last = i + patch_size
-            patch = [j_first, j_last, i_first, i_last]
-            patches.append(patch)
-
-    return patches
-
-def gen_blocks(output_image, b):
+def gen_blocks_inds(output_image, b, overlap):
     """
     Divide the output image into square blocks of size (b x b).
-    Output a list containing the block=[j_first, j_last, i_first, i_last]
-    of each block, such that 
-    output_image[j_first:j_last, i_first:i_last, :] is the block
+    Output a list containing the blocks' indexes, that is
+    [j_first, j_last, i_first, i_last] for each block, such that 
+    output_image[j_first:j_last, i_first:i_last, :] is the block.
     """
 
     blocks = []
 
     height, width, channels = output_image.shape
 
-    for j in range(0, height, b):
-        for i in range(0, width, b):
+    for j in range(overlap, height+overlap, b):
+        for i in range(overlap, width+overlap, b):
             delta_x = min((width-i), b) # width-i if block goes off edge, else b
             delta_y = min((height-j), b) # height-j if block goes off edge, else b
 
@@ -95,15 +87,15 @@ def gen_blocks(output_image, b):
             
     return np.array(blocks)
 
-def add_patch_to_output_image(output_image, block, texture, patch, b, overlap):
+def add_patch_to_output_image(output_image, block, texture_patch, b, overlap):
     """
     @param:
         output_image (3D array): image being synthesized with texture
         block (1D array): equals [j_first, j_last, i_first, i_last], such that
             output_image[j_first:j_last, i_first:i_last, :] is the block in
             the output image to be filled in
-        patch (1D array): a list containing [j_first, j_last, i_first, i_last] 
-            such that texture[j_first:j_last, i_first:i_last, :] is the texture patch 
+        texture_patch (3D array): sliding window from the texture; shape is
+            (patch_size, patch_size, num_channels)
         b (int): blocks are shape (b, b, channels)
         overlap (int): the size of the overlap between the patches when calculating error
 
@@ -113,141 +105,99 @@ def add_patch_to_output_image(output_image, block, texture, patch, b, overlap):
     """
 
     # get block indices
-    j_first_b, j_last_b, i_first_b, i_last_b = block
-    H = j_last_b - j_first_b
-    W = i_last_b - i_first_b
-
-    # get texture patch
-    j_first_p, j_last_p, i_first_p, i_last_p = patch
-    texture_patch = texture[j_first_p:j_last_p, i_first_p:i_last_p, :]
+    j_first, j_last, i_first, i_last = block
+    H = j_last - j_first
+    W = i_last - i_first
 
     # last_x and last_y equal overlap plus height and width of block
     last_y = overlap + H 
     last_x = overlap + W
-    output_image[j_first_b:j_last_b, i_first_b:i_last_b, :] = texture_patch[overlap:last_y, overlap:last_x, :]
+    output_image[j_first:j_last, i_first:i_last, :] = \
+        texture_patch[overlap:last_y, overlap:last_x, :]
         
     return output_image
 
-def get_overlap_error(output_image, block, texture, patch, overlap):
+def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
+        target_luminosity, overlap, patch_size, num_channels):
     """
+    Using all_patches (all possible sliding windows over the texture), calculate the
+    error between the overlap between each patch and the filled in values of output_image 
+    if that patch is chosen plus the luminosity error.
+
     @param:
         output_image (3D array): image being synthesized with texture
-        block (1D array): equals [j_first, j_last, i_first, i_last], such that
+        block_inds (1D array): equals [j_first, j_last, i_first, i_last], such that
             output_image[j_first:j_last, i_first:i_last, :] is the block in
             the output image to be filled in
-        texture (3D array): the texture
-        patch (2D array): patch=[j_first, j_last, i_first, i_last] of patch,
-            such that texture[j_first:j_last, i_first:i_last, :] is the texture patch 
+        all_patches (4D array): all possible flattened sliding windows over texture of 
+            size patch_size x patch_size
+        texture_luminosity_windows (3D array): all possible windows of size (patch_size x patch_size)           over the luminosity (grayscale) map of the texture image 
+        target_luminosity (2D array): the luminosity (grayscale) map of the target image 
         overlap (int): the size of the overlap between the patches when calculating error
+        patch_size (int): the size of the patch
+        num_channels (int): the number of color channels
 
     @return:
-        error_sum (int): sum of squared errors
-    """
-
-    # get texture patch
-    j_first_p, j_last_p, i_first_p, i_last_p = patch
-    texture_patch = texture[j_first_p:j_last_p, i_first_p:i_last_p, :]
-
-    # get overlap type from block 
-    j_first_b, j_last_b, i_first_b, i_last_b = block
-    top_edge_overlap = (j_first_b != 0)
-    left_edge_overlap = (i_first_b != 0)
-
-    # calculate error
-    error_sum = 0
-
-    if (top_edge_overlap):
-        x_start = i_first_b - overlap if left_edge_overlap else i_first_b
-        x_end = i_last_b
-        y_start = j_first_b - overlap 
-        y_end = j_first_b
-        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, x_start:x_end, :],
-            texture_patch[:(y_end-y_start), :(x_end-x_start), :])))
-    
-    if (left_edge_overlap):
-        x_start = i_first_b - overlap
-        x_end = i_last_b
-        y_start = j_first_b - overlap if top_edge_overlap else j_first_b
-        y_end = j_last_b
-        error_sum += np.nansum(np.square(np.subtract(output_image[y_start:y_end, x_start:x_end, :],
-            texture_patch[:(y_end-y_start), :(x_end-x_start), :])))
-        
-    return error_sum
-
-def get_luminosity_error(target_luminosity, block, texture_luminosity, patch, overlap):
-    """
-    @param:
-        target_luminosity (2D array): maps (x,y) coordinates in target image to luminosity
-        block (1D array): equals [j_first, j_last, i_first, i_last], such that
-            output_image[j_first:j_last, i_first:i_last, :] is the block in
-            the output image to be filled in
-        texture_luminosity (2D array): maps (x,y) coordinates in texture image to luminosity
-        patch (2D array): patch=[j_first, j_last, i_first, i_last] of patch,
-            such that texture[j_first:j_last, i_first:i_last, :] is the texture patch 
-    """
-
-    # get target block
-    j_first_b, j_last_b, i_first_b, i_last_b = block
-    H = j_last_b - j_first_b
-    W = i_last_b - i_first_b
-    target_lum_block = target_luminosity[j_first_b:j_last_b, i_first_b:i_last_b]
-
-    # get texture block
-    j_first_p, j_last_p, i_first_p, i_last_p = patch
-    texture_lum_block = texture_luminosity[j_first_p:j_first_p+H, i_first_p:i_first_p+W]
-
-    # get sum of mean squared error
-    return np.nansum(np.square(np.subtract(target_lum_block, texture_lum_block)))
-
-def get_best_patch(output_image, block, all_patches, texture, texture_luminosity,
-        target_luminosity, overlap):
-    """
-    Using all_patches (all possible sliding windows of size patch_size placed over texture), 
-    calculate error between overlap with output_image_block if patch is placed in 
-    output_image by output_image_block
-
-    @param:
-        output_image (3D array): image being synthesized with texture
-        block (1D array): equals [j_first, j_last, i_first, i_last], such that
-            output_image[j_first:j_last, i_first:i_last, :] is the block in
-            the output image to be filled in
-        all_patches (2D array): a list containing the 
-            patch=[j_first, j_last, i_first, i_last] of each path
-            patch, such that texture[j_first:j_last, i_first:i_last, :] is the patch 
-        texture (3D array): the texture; array of shape (height, width, channels)
-        texture_luminosity (2D array): maps (x,y) coordinates in texture image to luminosity
-        target_luminosity (2D array): maps (x,y) coordinates in target image to luminosity
-        overlap (int): the size of the overlap between the patches when calculating error
+        the best patch (unflattened)
     """
 
     # alpha - how much to weigh luminosity
     alpha = 5
 
-    # get sum of squared errors
-    errors = []
-    for patch in all_patches:
-        # get error between overlap of texture patch and output image
-        overlap_error = get_overlap_error(output_image, block, texture, patch, overlap)
-        # get error between luminosity of target image and texture patch
-        luminosity_error = get_luminosity_error(target_luminosity, block, 
-            texture_luminosity, patch, overlap)
-        errors.append(overlap_error + alpha*luminosity_error)
+    # get block indexes
+    j_first, j_last, i_first, i_last = block
+
+    # get patch from output image
+    output_image_patch = np.array(output_image[j_first-overlap:j_last, 
+            i_first-overlap:i_last, :])
+
+    # get patch from target luminosity map
+    target_lum_patch = np.array(target_luminosity[j_first-overlap:j_last, 
+            i_first-overlap:i_last])
+
+    # resize patches if too small
+    if (output_image_patch.shape != (patch_size, patch_size, num_channels)):
+        output_image_patch.resize((patch_size, patch_size, num_channels))
+    if (target_lum_patch.shape != (patch_size, patch_size)):
+        target_lum_patch.resize((patch_size, patch_size))
+
+    # flatten and stack for calculating error with texture patches
+    # output image
+    flat_output_image_patch = np.reshape(output_image_patch, (patch_size*patch_size, num_channels))
+    stacked_flat_output_image_patch = [flat_output_image_patch for i in range(len(all_patches))]
+
+    # luminosity map
+    flat_target_lum_patch = np.reshape(target_lum_patch, (patch_size*patch_size))
+    stacked_flat_target_lum_patch = [flat_target_lum_patch for i in range(len(all_patches))]
+
+    # overlap error between output image and all texture patches over block
+    # calculate sum of squared errors and sum over color channels
+    # each index corresponds to the error of a texture patch
+    stacked_overlap_errors = np.nansum(np.nansum(np.square(np.subtract( \
+        stacked_flat_output_image_patch, all_patches)), axis=1), axis=1)
+
+    # luminosity error between target patch being filled and all texture patches
+    stacked_lum_errors = np.nansum(np.square(np.subtract( \
+        stacked_flat_target_lum_patch, texture_luminosity_windows)), axis=1)
+
+    # sum errors
+    stacked_errors = stacked_overlap_errors + stacked_lum_errors
 
     # get min non-zero error
-    errors = np.array(errors)
-    min_error = np.min(errors[errors>0])
+    min_error = np.min(stacked_errors[stacked_errors>0])
 
     # make list of patches with error below some threshhold
     epsilon = 0.1 # error threshhold
     valid_texture_patches = []
-    for k in range(len(errors)):
-        if ((errors[k] > 0 and errors[k] < min_error * (1 + epsilon))):
+    for k in range(len(stacked_errors)):
+        if ((stacked_errors[k] > 0 and stacked_errors[k] < min_error * (1 + epsilon))):
             valid_texture_patches.append(all_patches[k])
     
     # return random patch from valid patches
-    return valid_texture_patches[np.random.randint(len(valid_texture_patches))]
+    return np.reshape(valid_texture_patches[np.random.randint(len(valid_texture_patches))],
+        (patch_size, patch_size, num_channels))
 
-def synthesize_texture_in_patches(texture, target, b, overlap):
+def transfer_texture_in_patches(texture, target, b, overlap):
     """
     Fill the image with the given texture in pathes, minimizing the error between the
     luminosity of the texture and target images
@@ -259,7 +209,7 @@ def synthesize_texture_in_patches(texture, target, b, overlap):
        source image and add the center (b x b) pixels to the top-left (b x b) block 
        in the synthesized image (ignore the pixels that go over the edge of the output image)
     2. For each block in the output image:
-            a) Iterate through all possible ((b + 2*overlap) x (b + 2*overlap)) patches 
+            a) Iterate through all possible ((b + overlap) x (b + overlap)) patches 
                in the texture source image 
             b) Calculate the error between the overlapping areas and the filled in 
                areas of the output image plus the error between the luminosity maps
@@ -283,39 +233,48 @@ def synthesize_texture_in_patches(texture, target, b, overlap):
     target = im2double(target)
     [target_height, target_width, target_num_channels] = target.shape
 
-    ## Get luminosity maps of texture and target images
-    texture_luminosity = rgb2gray(texture)
+    ## Get sliding window over luminosity maps of texture and target images
+    patch_size = b + overlap # same size as block plus overlap on top and left sides
+    texture_luminosity_windows = im2col_sliding_strided(rgb2gray(texture), (patch_size, patch_size))
     target_luminosity = rgb2gray(target)
     
-    ## Initialize the output image to NANs
-    output_image = np.full((target_height, target_width, target_num_channels),np.nan)
+    ## Initialize the output image (padded with overlap on all sides) to NANs
+    output_image = np.full((target_height + 2*overlap, target_width + 2*overlap, 
+        target_num_channels), np.nan)
 
-    ## Generate blocks
-    blocks = gen_blocks(output_image, b)
+    ## Generate block indexes
+    all_blocks_inds = gen_blocks_inds(output_image, b, overlap)
 
-    ## Generate all patch windows
-    patch_size = b + overlap # same size as block plus overlap on top and left sides
-    all_patches = gen_patches(output_image, texture, patch_size)
+    ## Generate flattened sliding window over texture
+    # shape: (num_windows, patch_size*patch_size, num_channels)
+    all_patches = np.dstack([im2col_sliding_strided(texture[:,:,i], 
+        (patch_size,patch_size)) for i in range(texture_num_channels)])
 
     ## Initialization: pick a random (patch_size x patch_size) patch from the texture
     ## source image and place it in the top-left (b x b) block in the output image
     j0 = np.random.randint(texture_height-patch_size)
     i0 = np.random.randint(texture_width-patch_size)
-    random_texture_patch = texture[j0:j0+patch_size, i0:i0+patch_size, :]
-    output_image = add_patch_to_output_image(output_image, blocks[0], 
-        texture, [j0, j0+patch_size, i0, i0+patch_size], b, overlap)
+    # get random (flattened) patch
+    rand_flat_patch = all_patches[np.random.randint(len(all_patches))]
+    # reshape patch to make 3D
+    random_texture_patch = np.dstack([np.reshape(rand_flat_patch[:,i], 
+        (patch_size, patch_size)) for i in range(texture_num_channels)])
+    output_image = add_patch_to_output_image(output_image, all_blocks_inds[0], 
+        random_texture_patch, b, overlap)
 
     start_time = time.clock()
 
     ## Fill in the rest of the blocks
-    for i in range(1, len(blocks)):
-        print_progress(start_time, (i-1) / (len(blocks)-1))
-        best_patch = get_best_patch(output_image, blocks[i], all_patches, texture, 
-            texture_luminosity, target_luminosity, overlap)
-        output_image = add_patch_to_output_image(output_image, blocks[i], 
-            texture, best_patch, b, overlap)
+    for i in range(1, len(all_blocks_inds)):
+        print_progress(start_time, (i-1) / (len(all_blocks_inds)-1))
+        best_patch = get_best_patch(output_image, all_blocks_inds[i], all_patches,
+            texture_luminosity_windows, target_luminosity,
+            overlap, patch_size, target_num_channels)
+        output_image = add_patch_to_output_image(output_image, all_blocks_inds[i], 
+            best_patch, b, overlap)
 
-    return output_image
+    # return output_image with overlap padding cropped out
+    return output_image[overlap:-overlap, overlap:-overlap, :]
 
 def run(texture_filename, target_filename, output_filename):
     """
@@ -330,13 +289,13 @@ def run(texture_filename, target_filename, output_filename):
     texture_image = cv2.imread(texture_filename)
     target_image = cv2.imread(target_filename)
 
-    block_size = 5
-    overlap = 1
-    target = synthesize_texture_in_patches(texture_image, target_image, block_size, overlap)
+    block_size = 10
+    overlap = 5
+    target = transfer_texture_in_patches(texture_image, target_image, block_size, overlap)
 
     plt.figure() 
     plt.imshow(target) 
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/starry_night.png", "targets/bridge.png", "transfer_output/block_size_5_overlap_1_style_starry_night_target_bridge.png")
+run("styles/rings.png", "targets/bridge.png", "transfer_output/test.png")
