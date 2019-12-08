@@ -36,7 +36,7 @@ def print_progress(start_time, percent):
     sys.stdout.flush()
 
 def im2array(filename):
-    img = Image.open(filename) 
+    img = Image.open(filename).convert('RGB') 
     img.load()
     data = np.asarray(img, dtype="int32")
     return data
@@ -144,7 +144,7 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
     """
 
     # alpha - how much to weigh luminosity
-    alpha = 5
+    alpha = 10
 
     # get block indexes
     j_first, j_last, i_first, i_last = block
@@ -179,8 +179,9 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
         stacked_flat_output_image_patch, all_patches)), axis=1), axis=1), dtype="int32")
 
     # luminosity error between target patch being filled and all texture patches
+    # multiply luminosity error by alpha
     stacked_lum_errors = np.array(np.nansum(np.square(np.subtract( \
-        stacked_flat_target_lum_patch, texture_luminosity_windows)), axis=1), dtype="int32")
+        stacked_flat_target_lum_patch, texture_luminosity_windows)), axis=1), dtype="int32")*alpha
 
     # sum errors
     stacked_errors = stacked_overlap_errors + stacked_lum_errors
@@ -270,8 +271,9 @@ def transfer_texture_in_patches(texture, target, b, overlap):
         output_image = add_patch_to_output_image(output_image, all_blocks_inds[i], 
             best_patch, b, overlap)
 
-    # return output_image with overlap padding cropped out
-    return output_image[overlap:-overlap, overlap:-overlap, :]
+    # return normalized output_image with overlap padding cropped out
+    output_image = np.array(output_image[overlap:-overlap, overlap:-overlap, :])
+    return output_image.astype(np.float) / output_image.max()
 
 def run(texture_filename, target_filename, output_filename):
     """
@@ -295,4 +297,19 @@ def run(texture_filename, target_filename, output_filename):
     plt.axis('off') 
     plt.savefig(output_filename)
 
-run("styles/starry_night.png", "targets/bridge.png", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5.png")
+
+run("styles/starry_night.jpg", "targets/bridge.jpg", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5_alpha_10.png")
+
+"""
+run("styles/red_gradient.png", "targets/bridge.jpg", "transfer_output/texture_red_gradient_target_bridge_bsize_20_overlap_5_alpha_10.png")
+
+run("styles/brickwall.png", "targets/bridge.jpg", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5.png")
+
+run("styles/fabric.jpg", "targets/bridge.jpg", "transfer_output/texture_fabric_night_target_bridge_bsize_20_overlap_5.png")
+
+run("styles/starry_night.jpg", "targets/lincoln.jpg", "transfer_output/texture_starry_night_target_lincoln_bsize_20_overlap_5.png")
+
+run("styles/brickwall.png", "targets/lincoln.jpg", "transfer_output/texture_starry_night_target_lincoln_bsize_20_overlap_5.png")
+
+run("styles/fabric.png", "targets/lincoln.jpg", "transfer_output/texture_fabric_night_target_lincoln_bsize_20_overlap_5.png")
+"""
