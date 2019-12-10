@@ -144,7 +144,7 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
     """
 
     # alpha - how much to weigh luminosity
-    alpha = 10
+    alpha = 10 
 
     # get block indexes
     j_first, j_last, i_first, i_last = block
@@ -192,13 +192,16 @@ def get_best_patch(output_image, block, all_patches, texture_luminosity_windows,
     # make list of patches with error below some threshhold
     epsilon = 0.1 # error threshhold
     valid_texture_patches = []
+    valid_errors = []
     for k in range(len(stacked_errors)):
         if ((stacked_errors[k] > 0 and stacked_errors[k] < min_error * (1 + epsilon))):
             valid_texture_patches.append(all_patches[k])
+            valid_errors.append(stacked_errors[k])
     
     # return random patch from valid patches
-    return np.reshape(valid_texture_patches[np.random.randint(len(valid_texture_patches))],
-        (patch_size, patch_size, num_channels))
+    rand_patch_ind = np.random.randint(len(valid_texture_patches))
+    return (np.reshape(valid_texture_patches[rand_patch_ind],
+        (patch_size, patch_size, num_channels)), valid_errors[rand_patch_ind])
 
 def transfer_texture_in_patches(texture, target, b, overlap):
     """
@@ -260,16 +263,23 @@ def transfer_texture_in_patches(texture, target, b, overlap):
     output_image = add_patch_to_output_image(output_image, all_blocks_inds[0], 
         random_texture_patch, b, overlap)
 
+    ## keep track of average error
+    error_sum = 0
+
     start_time = time.clock()
 
     ## Fill in the rest of the blocks
     for i in range(1, len(all_blocks_inds)):
         print_progress(start_time, (i-1) / (len(all_blocks_inds)-1))
-        best_patch = get_best_patch(output_image, all_blocks_inds[i], all_patches,
+        best_patch, error = get_best_patch(output_image, all_blocks_inds[i], all_patches,
             texture_luminosity_windows, target_luminosity,
             overlap, patch_size, target_num_channels)
+        error_sum += error
         output_image = add_patch_to_output_image(output_image, all_blocks_inds[i], 
             best_patch, b, overlap)
+
+    print("\n")
+    print("Average error: ", error_sum / (len(all_blocks_inds)-1))
 
     # return normalized output_image with overlap padding cropped out
     output_image = np.array(output_image[overlap:-overlap, overlap:-overlap, :])
@@ -298,18 +308,20 @@ def run(texture_filename, target_filename, output_filename):
     plt.savefig(output_filename)
 
 
-run("styles/starry_night.jpg", "targets/bridge.jpg", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5_alpha_10.png")
+run("styles/fabric.jpg", "targets/bridge.jpg", "transfer_output/blah2.png")
 
 """
+run("styles/fabric.jpg", "targets/lincoln.jpg", "transfer_output/texture_fabric_night_target_lincoln_bsize_20_overlap_5.png")
+
+run("styles/starry_night.jpg", "targets/lincoln.jpg", "transfer_output/texture_starry_night_target_lincoln_bsize_20_overlap_5_alpha_10.png")
+
+run("styles/fabric.jpg", "targets/bridge.jpg", "transfer_output/texture_fabric_target_bridge_bsize_20_overlap_5_alpha_10.png")
+
+run("styles/starry_night.jpg", "targets/bridge.jpg", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5_alpha_2.png")
+
 run("styles/red_gradient.png", "targets/bridge.jpg", "transfer_output/texture_red_gradient_target_bridge_bsize_20_overlap_5_alpha_10.png")
 
 run("styles/brickwall.png", "targets/bridge.jpg", "transfer_output/texture_starry_night_target_bridge_bsize_20_overlap_5.png")
 
-run("styles/fabric.jpg", "targets/bridge.jpg", "transfer_output/texture_fabric_night_target_bridge_bsize_20_overlap_5.png")
-
-run("styles/starry_night.jpg", "targets/lincoln.jpg", "transfer_output/texture_starry_night_target_lincoln_bsize_20_overlap_5.png")
-
 run("styles/brickwall.png", "targets/lincoln.jpg", "transfer_output/texture_starry_night_target_lincoln_bsize_20_overlap_5.png")
-
-run("styles/fabric.png", "targets/lincoln.jpg", "transfer_output/texture_fabric_night_target_lincoln_bsize_20_overlap_5.png")
 """
